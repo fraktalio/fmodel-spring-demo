@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  #### Database
+  postgres:
+    image: postgres:latest
+    environment:
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - 5432:5432
+    hostname: postgres
+    networks:
+      - fmodel-net
+  #### Applications
+  fmodel-spring-demo:
+    image: docker.io/library/fmodel-spring-demo:0.0.1-SNAPSHOT
+    depends_on:
+      - postgres
+    environment:
+      - spring.r2dbc.url=r2dbc:postgresql://postgres:5432/postgres
+      - spring.r2dbc.username=postgres
+      - spring.r2dbc.password=password
+    ports:
+      - 8080:8080
+    networks:
+      - fmodel-net
+networks:
+  fmodel-net:
+
+
