@@ -1,6 +1,14 @@
 # fmodel-spring-demo (EventSourcing)
 
 A demo/example project for the imaginary restaurant and order management.
+It is backing the [Fmodel Reference Guide](https://fraktalio.com/fmodel/).
+
+It demonstrates how to run our unique domain and orchestrate it in an EventSourced/EventDriven way.
+
+> For State-Stored flavor of the system, please check [https://github.com/fraktalio/fmodel-spring-state-stored-demo](https://github.com/fraktalio/fmodel-spring-state-stored-demo), and notice:
+> - how the `domain` package/model is the same / state-stored system and event-sourced system share the same domain logic
+> - `application and adapters are different / we only choose to compose and run them differentlly`
+
 
 ![event model image](.assets/restaurant-model.jpg)
 *this bleuprint is an outcome of the [event-modeling](https://eventmodeling.org/posts/what-is-event-modeling/) process*
