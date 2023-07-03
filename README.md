@@ -117,8 +117,12 @@ Run application and PostgreSQL:
 docker-compose up
 ```
 
+## Explore the REST API 
+Explore the REST API using the [test.http](test.http) file.
+
 ## Further Reading
 
+- Learn more about [Fmodel](https://fraktalio.com/fmodel/)
 - Check the [source code](https://github.com/fraktalio/fmodel)
 - Read the [blog](https://fraktalio.com/blog/)
 - Learn by example on the [playground](https://fraktalio.com/blog/playground)

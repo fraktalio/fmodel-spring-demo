@@ -1,0 +1,43 @@
+### Register/Create new restaurant
+
+POST http://localhost:8080/restaurants
+Content-Type: application/json
+
+{
+  "identifier": "3ac06cc7-0b59-436e-8c54-576f3cca01a9",
+  "name": "ce-vap",
+  "menu": {
+    "menuItems": [
+      {
+        "menuItemId": "item1",
+        "name": "menuItemName",
+        "price": "10"
+      }
+    ],
+    "menuId": "af273f6c-0702-450c-9d44-34913e248376",
+    "cuisine": "GENERAL"
+  }
+}
+
+
+### Place order
+
+POST http://localhost:8080/restaurants/3ac06cc7-0b59-436e-8c54-576f3cca01a9/orders
+Content-Type: application/json
+
+{
+  "identifier": "3ac06cc7-0b59-436e-8c54-576f3cca01a9",
+  "orderIdentifier": "4ac06cc7-0b59-436e-8c54-576f3cca01a9",
+  "lineItems": [
+    {
+      "menuItemId": "item1",
+      "name": "menuItemName",
+      "quantity": "2",
+      "id": "1"
+    }
+  ]
+}
+
+### Get all orders
+GET http://localhost:8080/restaurants
+Content-Type: application/json
