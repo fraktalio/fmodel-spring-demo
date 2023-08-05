@@ -31,7 +31,7 @@ extra["fmodelVersion"] = "3.5.0"
 extra["kotlinxSerializationJson"] = "1.5.1"
 extra["kotlinxCollectionsImmutable"] = "0.3.5"
 extra["kotlinLogging"] = "3.0.5"
-extra["kotlinxCoroutinesTest"] = "1.7.2"
+extra["kotlinxCoroutinesTest"] = "1.7.3"
 
 dependencies {
     implementation("com.fraktalio.fmodel:domain:${property("fmodelVersion")}")
