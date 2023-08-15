@@ -1,6 +1,6 @@
 package com.fraktalio.example.fmodelspringdemo
 
-import com.fraktalio.example.fmodelspringdemo.adapter.eventstream.EventStream
+import com.fraktalio.example.fmodelspringdemo.adapter.eventstream.EventStreamProcessor
 import com.fraktalio.example.fmodelspringdemo.adapter.eventstream.EventStreamRepository
 import com.fraktalio.example.fmodelspringdemo.adapter.eventstream.LockRepository
 import com.fraktalio.example.fmodelspringdemo.adapter.eventstream.ViewRepository
@@ -126,12 +126,12 @@ class FmodelSpringDemoConfiguration {
         havingValue = "true",
         matchIfMissing = true
     )
-    fun eventStreamBean(
+    fun eventStreamProcessorBean(
         eventStreamRepository: EventStreamRepository,
         lockRepository: LockRepository,
         viewRepository: ViewRepository,
         materializedView: MaterializedView<MaterializedViewState, Event?>
-    ) = EventStream(eventStreamRepository, lockRepository, viewRepository, materializedView)
+    ) = EventStreamProcessor(eventStreamRepository, lockRepository, viewRepository, materializedView)
 
     @Bean
     fun messageConverter(): KotlinSerializationJsonMessageConverter {

@@ -11,7 +11,7 @@ It demonstrates how to run our unique domain and orchestrate it in an EventSourc
 
 
 ![event model image](.assets/restaurant-model.jpg)
-*this bleuprint is an outcome of the [event-modeling](https://eventmodeling.org/posts/what-is-event-modeling/) process*
+*this blueprint is an outcome of the [event-modeling](https://eventmodeling.org/posts/what-is-event-modeling/) process*
 
 ## Fmodel
 
@@ -87,6 +87,9 @@ sourcing and event streaming.
 This project is using [Gradle](https://docs.gradle.org) as a build and automation tool.
 
 ### Test:
+
+> Make sure you have [Docker](https://www.docker.com/products/docker-desktop/) installed and running, as we are running
+> integration tests as well.
 
 ```shell
 ./gradlew check

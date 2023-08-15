@@ -38,6 +38,6 @@ Content-Type: application/json
   ]
 }
 
-### Get all orders
+### Get all restaurants
 GET http://localhost:8080/restaurants
 Content-Type: application/json
