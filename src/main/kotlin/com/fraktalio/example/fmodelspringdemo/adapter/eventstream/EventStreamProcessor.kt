@@ -156,7 +156,7 @@ class EventStreamProcessor(
         @Suppress("SameParameterValue") view: String,
         actions: Flow<Action>
     ): Flow<Pair<Event, Long>> =
-        channelFlow {
+        flow {
             viewRepository.findById(view)?.let { viewEntity ->
                 launch {
                     actions.collect {
@@ -164,7 +164,7 @@ class EventStreamProcessor(
                     }
                 }
                 eventStreamingRepository.streamEvents(view, viewEntity.poolingDelayMilliseconds)
-                    .collect { send(it) }
+                    .collect { emit(it) }
             }
         }
 
@@ -186,17 +186,6 @@ class EventStreamProcessor(
                         actions.send(Ack(-1, "start"))
                     }
                 }
-                .onEach {
-                    try {
-                        logger.debug { "handling event: $it ..." }
-                        materializedView.handle(it.first)
-                        logger.debug { "sending ACK/SUCCESS for: $it ..." }
-                        actions.send(Ack(it.second, it.first.deciderId()))
-                    } catch (e: Exception) {
-                        logger.debug { "sending ScheduleNack/RETRY in 10 seconds, for: $it ..." }
-                        actions.send(ScheduleNack(10000, it.first.deciderId()))
-                    }
-                }
                 .retry(5) { cause ->
                     cause !is CancellationException
                 }
@@ -206,7 +195,17 @@ class EventStreamProcessor(
                         else -> logger.warn(it) { "event stream closed exceptionally: $it" }
                     }
                 }
-                .collect()
+                .collect {
+                    try {
+                        logger.debug { "handling event: $it" }
+                        materializedView.handle(it.first)
+                        logger.debug { "sending ACK/SUCCESS for: $it" }
+                        actions.send(Ack(it.second, it.first.deciderId()))
+                    } catch (e: Exception) {
+                        logger.debug { "sending ScheduleNack/RETRY in 10 seconds, for: $it" }
+                        actions.send(ScheduleNack(10000, it.first.deciderId()))
+                    }
+                }
         }
     }
 
@@ -228,17 +227,6 @@ class EventStreamProcessor(
                         actions.send(Ack(-1, "start"))
                     }
                 }
-                .onEach {
-                    try {
-                        logger.debug { "handling event: $it ..." }
-                        sagaManager.handle(it.first).collect()
-                        logger.debug { "sending ACK/SUCCESS for: $it ..." }
-                        actions.send(Ack(it.second, it.first.deciderId()))
-                    } catch (e: Exception) {
-                        logger.debug { "sending ScheduleNack/RETRY in 10 seconds, for: $it ..." }
-                        actions.send(ScheduleNack(10000, it.first.deciderId()))
-                    }
-                }
                 .retry(5) { cause ->
                     cause !is CancellationException
                 }
@@ -248,7 +236,17 @@ class EventStreamProcessor(
                         else -> logger.warn(it) { "event stream closed exceptionally: $it" }
                     }
                 }
-                .collect()
+                .collect {
+                    try {
+                        logger.debug { "handling event: $it" }
+                        sagaManager.handle(it.first).collect()
+                        logger.debug { "sending ACK/SUCCESS for: $it" }
+                        actions.send(Ack(it.second, it.first.deciderId()))
+                    } catch (e: Exception) {
+                        logger.debug { "sending ScheduleNack/RETRY in 10 seconds, for: $it" }
+                        actions.send(ScheduleNack(10000, it.first.deciderId()))
+                    }
+                }
         }
     }
 
