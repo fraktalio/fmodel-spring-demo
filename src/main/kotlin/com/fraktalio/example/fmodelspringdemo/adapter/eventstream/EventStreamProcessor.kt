@@ -11,6 +11,7 @@ import com.fraktalio.fmodel.application.handle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.Channel.Factory.BUFFERED
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -172,10 +173,12 @@ class EventStreamProcessor(
      * Register a materialized view and start pooling events by using [streamEvents] function
      * @param view the view name
      * @param materializedView the materialized view to register - event handler
+     * @param buffer the buffer size - the emitter (DB pooling) is suspended when the buffer overflows, to let slow collector (materialized view handler) catch up
      */
     private fun registerEventHandlerAndStartPooling(
         view: String,
         materializedView: MaterializedView<MaterializedViewState, Event?>,
+        buffer: Int = BUFFERED
     ) {
         launch {
             val actions = Channel<Action>()
@@ -195,6 +198,7 @@ class EventStreamProcessor(
                         else -> logger.warn(it) { "event stream closed exceptionally: $it" }
                     }
                 }
+                .buffer(buffer)
                 .collect {
                     try {
                         logger.debug { "handling event: $it" }
@@ -213,10 +217,12 @@ class EventStreamProcessor(
      * Register a saga manager and start pooling events by using [streamEvents] function
      * @param view the view name
      * @param sagaManager the saga manager to register - event handler
+     * @param buffer the buffer size - the emitter (DB pooling) is suspended when the buffer overflows, to let slow collector (saga manager handler) catch up
      */
     private fun registerSagaManagerAndStartPooling(
         view: String,
         sagaManager: SagaManager<Event?, Command>,
+        buffer: Int = BUFFERED
     ) {
         launch {
             val actions = Channel<Action>()
@@ -236,6 +242,7 @@ class EventStreamProcessor(
                         else -> logger.warn(it) { "event stream closed exceptionally: $it" }
                     }
                 }
+                .buffer(buffer)
                 .collect {
                     try {
                         logger.debug { "handling event: $it" }
