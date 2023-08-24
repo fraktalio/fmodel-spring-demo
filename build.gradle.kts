@@ -1,11 +1,11 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    id("org.springframework.boot") version "3.1.2"
+    id("org.springframework.boot") version "3.1.3"
     id("io.spring.dependency-management") version "1.1.3"
-    kotlin("jvm") version "1.9.0"
-    kotlin("plugin.spring") version "1.9.0"
-    kotlin("plugin.serialization") version "1.9.0"
+    kotlin("jvm") version "1.9.10"
+    kotlin("plugin.spring") version "1.9.10"
+    kotlin("plugin.serialization") version "1.9.10"
 }
 
 group = "com.fraktalio.example"
@@ -26,9 +26,9 @@ repositories {
     mavenCentral()
 }
 
-extra["testcontainersVersion"] = "1.18.3"
+extra["testcontainersVersion"] = "1.19.0"
 extra["fmodelVersion"] = "3.5.0"
-extra["kotlinxSerializationJson"] = "1.5.1"
+extra["kotlinxSerializationJson"] = "1.6.0"
 extra["kotlinxCollectionsImmutable"] = "0.3.5"
 extra["kotlinLogging"] = "3.0.5"
 extra["kotlinxCoroutinesTest"] = "1.7.3"
