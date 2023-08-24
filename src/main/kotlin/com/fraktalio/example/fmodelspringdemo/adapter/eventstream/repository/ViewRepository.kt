@@ -32,11 +32,7 @@ internal data class ViewEntity(
 )
 
 private const val registerView = """
-            INSERT INTO "views"
-              ("view", "pooling_delay", "start_at") VALUES (:view, :poolingDelayMilliseconds, :startAt)
-              ON CONFLICT ON CONSTRAINT "views_pkey"
-              DO UPDATE SET "updated_at" = NOW(), "start_at" = EXCLUDED."start_at", "pooling_delay" = EXCLUDED."pooling_delay"
-              RETURNING *
+            SELECT * FROM register_view(:view, :poolingDelayMilliseconds, :startAt)
         """
 
 // View database mapper function

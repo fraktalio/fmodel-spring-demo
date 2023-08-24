@@ -162,13 +162,17 @@ EXECUTE FUNCTION on_insert_or_update_on_views();
 -- Register a `view` (responsible for streaming events to concurrent consumers)
 -- Once the `view` is registered you can start `read_events` which will stream events by pooling database with delay, filtering `events` that are created after `start_at` timestamp
 -- Example of usage: SELECT * from register_view('view1', 500, '2023-01-23 12:17:17.078384')
+
 CREATE OR REPLACE FUNCTION register_view(v_view TEXT, v_pooling_delay BIGINT, v_start_at TIMESTAMP)
     RETURNS SETOF "views" AS
 '
     BEGIN
         RETURN QUERY
-            INSERT INTO "views" ("view", pooling_delay, start_at)
-                VALUES (v_view, v_pooling_delay, v_start_at) RETURNING *;
+            INSERT INTO "views" ("view", "pooling_delay", "start_at")
+                VALUES (v_view, v_pooling_delay, v_start_at)
+                ON CONFLICT ON CONSTRAINT "views_pkey"
+                    DO UPDATE SET "updated_at" = NOW(), "start_at" = EXCLUDED."start_at", "pooling_delay" = EXCLUDED."pooling_delay"
+                RETURNING *;
     END;
 ' LANGUAGE plpgsql;
 
