@@ -3,6 +3,7 @@
 --      ########################
 
 -- Registered deciders and the respectful events that these deciders can publish (decider can publish and/or source its own state from these event types only)
+DROP TABLE IF EXISTS deciders CASCADE;
 CREATE TABLE IF NOT EXISTS deciders
 (
     -- decider name/type

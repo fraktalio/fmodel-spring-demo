@@ -6,7 +6,8 @@
 -- The views table is a registry of all views/subscribers that are able to subscribe to all events with a "pooling_delay" frequency.
 -- You can not start consuming events without previously registering the view.
 -- see: `stream_events` function
-CREATE TABLE views
+DROP TABLE IF EXISTS views CASCADE;
+CREATE TABLE IF NOT EXISTS views
 (
     -- view identifier/name
     "view"          TEXT,
@@ -45,8 +46,6 @@ CREATE TABLE IF NOT EXISTS locks
     PRIMARY KEY ("view", "decider_id"),
     FOREIGN KEY ("view") REFERENCES views ("view") ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS locks_index ON locks ("decider_id", "locked_until", "last_offset");
 
 -- SIDE EFFECT:  before_update_views_table - automatically bump "updated_at" when modifying a view
 CREATE OR REPLACE FUNCTION "before_update_views_table"() RETURNS trigger AS
