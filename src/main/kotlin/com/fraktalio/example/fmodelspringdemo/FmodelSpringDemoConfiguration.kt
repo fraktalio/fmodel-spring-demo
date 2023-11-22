@@ -127,11 +127,18 @@ class FmodelSpringDemoConfiguration {
         matchIfMissing = true
     )
     fun eventStreamProcessorBean(
+        transactionalOperator: TransactionalOperator,
         eventStreamRepository: EventStreamRepository,
         lockRepository: LockRepository,
         viewRepository: ViewRepository,
         materializedView: MaterializedView<MaterializedViewState, Event?>
-    ) = EventStreamProcessor(eventStreamRepository, lockRepository, viewRepository, materializedView)
+    ) = EventStreamProcessor(
+        transactionalOperator,
+        eventStreamRepository,
+        lockRepository,
+        viewRepository,
+        materializedView
+    )
 
     @Bean
     fun messageConverter(): KotlinSerializationJsonMessageConverter {

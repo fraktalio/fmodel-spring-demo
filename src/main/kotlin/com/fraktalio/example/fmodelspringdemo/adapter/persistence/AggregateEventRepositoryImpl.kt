@@ -6,13 +6,14 @@ import com.fraktalio.example.fmodelspringdemo.adapter.event
 import com.fraktalio.example.fmodelspringdemo.application.AggregateEventRepository
 import com.fraktalio.example.fmodelspringdemo.domain.Command
 import com.fraktalio.example.fmodelspringdemo.domain.Event
-import io.r2dbc.postgresql.codec.Json.*
+import io.r2dbc.postgresql.codec.Json.of
 import io.r2dbc.spi.Row
 import io.r2dbc.spi.RowMetadata
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.reactive.asFlow
-import kotlinx.serialization.decodeFromString
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
@@ -29,7 +30,7 @@ import java.util.*
 private val logger = KotlinLogging.logger {}
 
 /**
- * Implementation of the [AggregateEventRepository].
+ * Implementation of the `Fmodel` [AggregateEventRepository] = EventLockingRepository<Command?, Event?, UUID?>.
  *
  * @author Иван Дугалић / Ivan Dugalic / @idugalic
  */
@@ -93,12 +94,10 @@ class AggregateEventRepositoryImpl(
             is Command -> getEvents(deciderId()).map { it.toEventWithId() }
             null -> emptyFlow()
         }
-            .onStart { logger.debug { "fetchEvents(${this@fetchEvents}) started ..." } }
-            .onEach { logger.debug { "fetched event: $it" } }
             .onCompletion {
                 when (it) {
-                    null -> logger.debug { "fetchEvents(${this@fetchEvents}) completed successfully" }
-                    else -> logger.warn { "fetchEvents(${this@fetchEvents}) completed with exception $it" }
+                    null -> logger.debug { "fetching the aggregate events by command ${this@fetchEvents} completed with success" }
+                    else -> logger.warn { "fetching the aggregate events by command ${this@fetchEvents} completed with exception $it" }
                 }
             }
             .flowOn(dbDispatcher)
@@ -133,8 +132,6 @@ class AggregateEventRepositoryImpl(
                 .map { it.toEventWithId() }
         )
     }
-        .onStart { logger.debug { "saving new events started ..." } }
-        .onEach { logger.debug { "saving new event: $it" } }
         .onCompletion {
             when (it) {
                 null -> logger.debug { "saving new events completed successfully" }
@@ -162,8 +159,6 @@ class AggregateEventRepositoryImpl(
                 .map { it.toEventWithId() }
         )
     }
-        .onStart { logger.debug { "saving new events started ..." } }
-        .onEach { logger.debug { "saving new event: $it" } }
         .onCompletion {
             when (it) {
                 null -> logger.debug { "saving new events completed successfully" }

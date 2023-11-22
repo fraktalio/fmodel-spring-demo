@@ -30,14 +30,14 @@ class EventStreamRepositoryImpl(private val databaseClient: DatabaseClient) : Ev
     override fun streamEvents(view: String, poolingDelayMilliseconds: Long): Flow<Pair<Event, Long>> =
         flow {
             while (currentCoroutineContext().isActive) {
-                logger.debug { "# stream loop #: pulling the db for the view $view" }
+                logger.trace { "# stream loop #: pulling the db for the view $view" }
                 val event = getEvent(view)
                 if (event != null) {
-                    logger.debug { "# stream loop #: emitting the event $event" }
+                    logger.trace { "# stream loop #: emitting the event $event" }
                     emit(event)
-                    logger.debug { "# stream loop #: event emitted" }
+                    logger.trace { "# stream loop #: event emitted" }
                 } else {
-                    logger.debug { "# stream loop #: scheduling new pool in $poolingDelayMilliseconds milliseconds" }
+                    logger.trace { "# stream loop #: scheduling new pool in $poolingDelayMilliseconds milliseconds" }
                     delay(poolingDelayMilliseconds)
                 }
             }

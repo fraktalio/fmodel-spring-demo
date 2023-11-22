@@ -130,7 +130,7 @@ CREATE OR REPLACE FUNCTION on_insert_or_update_on_views() RETURNS trigger AS
                         WHERE t2.decider_id = t1.decider_id
                         ORDER BY "t2"."offset" DESC
                         LIMIT 1)
-                   )         AS last_offset,
+               )             AS last_offset,
                NOW()         AS locked_until,
                t1.final      AS offset_final
         FROM (SELECT DISTINCT ON (decider_id) decider_id AS decider_id,

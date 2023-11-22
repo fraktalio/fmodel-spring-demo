@@ -52,7 +52,6 @@ internal open class MaterializedViewStateRepositoryImpl(
     override suspend fun Event?.fetchState(): MaterializedViewState =
         withContext(dbDispatcher) {
             try {
-                logger.debug { "fetching state by event ${this@fetchState} started ..." }
                 val result = when (this@fetchState) {
                     is OrderEvent -> MaterializedViewState(
                         null,
@@ -82,17 +81,16 @@ internal open class MaterializedViewStateRepositoryImpl(
 
                     null -> MaterializedViewState(null, null)
                 }
-                logger.debug { "fetching state by event $this completed with success" }
+                logger.debug { "fetching the view state by event ${this@fetchState} completed with success" }
                 result
             } catch (e: Exception) {
-                logger.error { "fetching state by event $this completed with exception $e" }
+                logger.error { "fetching the view state by event ${this@fetchState} completed with exception $e" }
                 throw e
             }
         }
 
     override suspend fun MaterializedViewState.save(): MaterializedViewState =
         withContext(dbDispatcher) {
-            logger.debug { "saving the state started ..." }
             operator.executeAndAwait { transaction ->
                 try {
                     order?.let { order ->
@@ -124,9 +122,9 @@ internal open class MaterializedViewStateRepositoryImpl(
                             )
                         }
                     }
-                    logger.debug { "saving the state completed with success" }
+                    logger.debug { "saving new view state completed with success" }
                 } catch (e: Exception) {
-                    logger.error { "saving the state completed with exception $e" }
+                    logger.error { "saving new view state completed with exception $e" }
                     transaction.setRollbackOnly()
                     throw e
                 }

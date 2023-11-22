@@ -10,7 +10,6 @@ import com.fraktalio.fmodel.application.SagaManager
 import com.fraktalio.fmodel.application.handle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.Channel.Factory.BUFFERED
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -18,9 +17,156 @@ import kotlinx.serialization.Serializable
 import mu.KotlinLogging
 import org.springframework.context.event.ContextRefreshedEvent
 import org.springframework.context.event.EventListener
+import org.springframework.transaction.reactive.TransactionalOperator
+import org.springframework.transaction.reactive.executeAndAwait
 import java.time.LocalDateTime
 import java.time.Month
 import kotlin.coroutines.cancellation.CancellationException
+
+
+private val logger = KotlinLogging.logger {}
+
+/**
+ * Event stream subscriber/processor
+ *
+ * It extends [SpringCoroutineScope] to map the Spring bean lifecycle to the kotlin coroutine scope in a robust way.
+ */
+class EventStreamProcessor(
+    private val transactionalOperator: TransactionalOperator,
+    private val eventStreamingRepository: EventStreamRepository,
+    private val lockRepository: LockRepository,
+    private val viewRepository: ViewRepository,
+    private val materializedView: MaterializedView<MaterializedViewState, Event?>? = null,
+    private val sagaManager: SagaManager<Event?, Command>? = null
+) : SpringCoroutineScope by SpringCoroutineScope(eventStreamDispatcher) {
+    /**
+     * Creates a stream of events for the given view.
+     *
+     * @param view the view name
+     */
+    private fun streamEvents(
+        @Suppress("SameParameterValue") view: String,
+    ): Flow<Pair<Event, Long>> =
+        flow {
+            when (val viewEntity = viewRepository.findById(view)) {
+                null -> logger.warn { "view $view not found. can not open the event stream!" }
+                else -> eventStreamingRepository.streamEvents(view, viewEntity.poolingDelayMilliseconds)
+                    .collect { emit(it) }
+
+            }
+        }
+
+    /**
+     * Register a materialized view and start pooling events by using [streamEvents] function
+     * @param view the view name
+     * @param materializedView the materialized view to register - event handler
+     * @param buffer the buffer size - the emitter (DB pooling) is suspended when the buffer overflows, to let slow collector (materialized view handler) catch up
+     * @param retries the number of retries in case of an exception while streaming (not handling) the events: db exceptions, network exceptions, etc.
+     * @param nackInMilliseconds scheduling retries in case of an exception while handling the events / the number of milliseconds to wait before retrying to handle the event
+     */
+    private fun registerEventHandlerAndStartPooling(
+        view: String,
+        materializedView: MaterializedView<MaterializedViewState, Event?>,
+        buffer: Int = BUFFERED,
+        retries: Long = 5,
+        nackInMilliseconds: Long = 10000
+    ) {
+        launch {
+            streamEvents(view)
+                .onStart {
+                    logger.info { "starting event streaming for the view 'view' ..." }
+                }
+                .retry(retries) { cause ->
+                    cause !is CancellationException
+                }
+                .onCompletion {
+                    when (it) {
+                        null -> logger.info { "event stream closed successfully" }
+                        else -> logger.warn(it) { "event stream closed exceptionally: $it" }
+                    }
+                }
+                .buffer(buffer)
+                .collect {
+                    // The event handler and lock/token management are executed in one transaction
+                    transactionalOperator.executeAndAwait { reactiveTransaction ->
+                        try {
+                            materializedView.handle(it.first)
+                            lockRepository.executeAction(view, Ack(it.second, it.first.deciderId()))
+                            logger.debug { "handled event successfully: $it" }
+                        } catch (e: Exception) {
+                            reactiveTransaction.setRollbackOnly()
+                            lockRepository.executeAction(view, ScheduleNack(nackInMilliseconds, it.first.deciderId()))
+                            logger.debug { "handled event unsuccessfully. setting ScheduleNack/RETRY in 10 seconds, for: $it" }
+                        }
+                    }
+                }
+        }
+    }
+
+    /**
+     * Register a saga manager and start pooling events by using [streamEvents] function
+     * @param view the view name
+     * @param sagaManager the saga manager to register - event handler
+     * @param buffer the buffer size - the emitter (DB pooling) is suspended when the buffer overflows, to let slow collector (saga manager handler) catch up
+     * @param retries the number of retries in case of an exception while streaming (not handling) the events: db exceptions, network exceptions, etc.
+     * @param nackInMilliseconds scheduling retries in case of an exception while handling the events / the number of milliseconds to wait before retrying to handle the event
+     */
+    private fun registerSagaManagerAndStartPooling(
+        view: String,
+        sagaManager: SagaManager<Event?, Command>,
+        buffer: Int = BUFFERED,
+        retries: Long = 5,
+        nackInMilliseconds: Long = 10000
+    ) {
+        launch {
+            streamEvents(view)
+                .onStart {
+                    logger.info { "saga: starting event streaming for the saga/view 'saga' ..." }
+                }
+                .retry(retries) { cause ->
+                    cause !is CancellationException
+                }
+                .onCompletion {
+                    when (it) {
+                        null -> logger.info { "saga: event stream closed successfully" }
+                        else -> logger.warn(it) { "saga: event stream closed exceptionally: $it" }
+                    }
+                }
+                .buffer(buffer)
+                .collect {
+                    // The event handler and lock/token management are executed in one transaction
+                    transactionalOperator.executeAndAwait { reactiveTransaction ->
+                        try {
+                            sagaManager.handle(it.first).collect()
+                            lockRepository.executeAction(view, Ack(it.second, it.first.deciderId()))
+                            logger.debug { "saga: handled event successfully: $it" }
+                        } catch (e: Exception) {
+                            reactiveTransaction.setRollbackOnly()
+                            lockRepository.executeAction(view, ScheduleNack(nackInMilliseconds, it.first.deciderId()))
+                            logger.debug { "saga: handled event unsuccessfully. setting ScheduleNack/RETRY in 10 seconds, for: $it" }
+                        }
+                    }
+                }
+        }
+    }
+
+    /**
+     * Register event handler and saga manager on Spring ContextRefreshedEvent
+     */
+    @EventListener
+    fun onApplicationEvent(event: ContextRefreshedEvent?) {
+        logger.info { "spring context refreshed: $event" }
+        materializedView?.let { registerEventHandlerAndStartPooling("view", it, nackInMilliseconds = 10000) }
+        sagaManager?.let { registerSagaManagerAndStartPooling("saga", it) }
+    }
+}
+
+/**
+ * Kotlin coroutine dispatcher for event stream processing, with limited parallelism.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+private val eventStreamDispatcher = Dispatchers.IO.limitedParallelism(10)
+
 
 @Serializable
 sealed class Action
@@ -48,7 +194,6 @@ data class Lock(
 
 @Serializable
 data class View(val view: String, val poolingDelayMilliseconds: Long)
-
 
 /**
  * View repository interface - register the materialized view, find all registered views, find view by id
@@ -125,150 +270,6 @@ interface EventStreamRepository {
      */
     fun streamEvents(view: String, poolingDelayMilliseconds: Long): Flow<Pair<Event, Long>>
 }
-
-private val logger = KotlinLogging.logger {}
-
-/**
- * Kotlin coroutine dispatcher for event stream processing, with limited parallelism.
- */
-@OptIn(ExperimentalCoroutinesApi::class)
-private val eventStreamDispatcher = Dispatchers.IO.limitedParallelism(10)
-
-/**
- * Event stream subscriber/processor
- *
- * It extends [SpringCoroutineScope] to map the Spring bean lifecycle to the kotlin coroutine scope in a robust way.
- */
-class EventStreamProcessor(
-    private val eventStreamingRepository: EventStreamRepository,
-    private val lockRepository: LockRepository,
-    private val viewRepository: ViewRepository,
-    private val materializedView: MaterializedView<MaterializedViewState, Event?>? = null,
-    private val sagaManager: SagaManager<Event?, Command>? = null
-) : SpringCoroutineScope by SpringCoroutineScope(eventStreamDispatcher) {
-    /**
-     * Creates a stream of events for the given view.
-     * The actions flow and the resulting events flow are independent.
-     *
-     * @param view the view name
-     * @param actions the actions to execute
-     */
-    private fun streamEvents(
-        @Suppress("SameParameterValue") view: String,
-        actions: Flow<Action>
-    ): Flow<Pair<Event, Long>> =
-        flow {
-            viewRepository.findById(view)?.let { viewEntity ->
-                launch {
-                    actions.collect {
-                        lockRepository.executeAction(view, it)
-                    }
-                }
-                eventStreamingRepository.streamEvents(view, viewEntity.poolingDelayMilliseconds)
-                    .collect { emit(it) }
-            }
-        }
-
-    /**
-     * Register a materialized view and start pooling events by using [streamEvents] function
-     * @param view the view name
-     * @param materializedView the materialized view to register - event handler
-     * @param buffer the buffer size - the emitter (DB pooling) is suspended when the buffer overflows, to let slow collector (materialized view handler) catch up
-     */
-    private fun registerEventHandlerAndStartPooling(
-        view: String,
-        materializedView: MaterializedView<MaterializedViewState, Event?>,
-        buffer: Int = BUFFERED
-    ) {
-        launch {
-            val actions = Channel<Action>()
-            streamEvents(view, actions.receiveAsFlow())
-                .onStart {
-                    logger.info { "starting event streaming for the view 'view' ..." }
-                    launch {
-                        actions.send(Ack(-1, "start"))
-                    }
-                }
-                .retry(5) { cause ->
-                    cause !is CancellationException
-                }
-                .onCompletion {
-                    when (it) {
-                        null -> logger.info { "event stream closed successfully" }
-                        else -> logger.warn(it) { "event stream closed exceptionally: $it" }
-                    }
-                }
-                .buffer(buffer)
-                .collect {
-                    try {
-                        logger.debug { "handling event: $it" }
-                        materializedView.handle(it.first)
-                        logger.debug { "sending ACK/SUCCESS for: $it" }
-                        actions.send(Ack(it.second, it.first.deciderId()))
-                    } catch (e: Exception) {
-                        logger.debug { "sending ScheduleNack/RETRY in 10 seconds, for: $it" }
-                        actions.send(ScheduleNack(10000, it.first.deciderId()))
-                    }
-                }
-        }
-    }
-
-    /**
-     * Register a saga manager and start pooling events by using [streamEvents] function
-     * @param view the view name
-     * @param sagaManager the saga manager to register - event handler
-     * @param buffer the buffer size - the emitter (DB pooling) is suspended when the buffer overflows, to let slow collector (saga manager handler) catch up
-     */
-    private fun registerSagaManagerAndStartPooling(
-        view: String,
-        sagaManager: SagaManager<Event?, Command>,
-        buffer: Int = BUFFERED
-    ) {
-        launch {
-            val actions = Channel<Action>()
-            streamEvents(view, actions.receiveAsFlow())
-                .onStart {
-                    logger.info { "starting event streaming for the saga/view 'saga' ..." }
-                    launch {
-                        actions.send(Ack(-1, "start"))
-                    }
-                }
-                .retry(5) { cause ->
-                    cause !is CancellationException
-                }
-                .onCompletion {
-                    when (it) {
-                        null -> logger.info { "event stream closed successfully" }
-                        else -> logger.warn(it) { "event stream closed exceptionally: $it" }
-                    }
-                }
-                .buffer(buffer)
-                .collect {
-                    try {
-                        logger.debug { "handling event: $it" }
-                        sagaManager.handle(it.first).collect()
-                        logger.debug { "sending ACK/SUCCESS for: $it" }
-                        actions.send(Ack(it.second, it.first.deciderId()))
-                    } catch (e: Exception) {
-                        logger.debug { "sending ScheduleNack/RETRY in 10 seconds, for: $it" }
-                        actions.send(ScheduleNack(10000, it.first.deciderId()))
-                    }
-                }
-        }
-    }
-
-    /**
-     * Register event handler and saga manager on Spring ContextRefreshedEvent
-     */
-    @EventListener
-    fun onApplicationEvent(event: ContextRefreshedEvent?) {
-        logger.info { "Spring ContextRefreshedEvent just occurred: $event" }
-        materializedView?.let { registerEventHandlerAndStartPooling("view", it) }
-        sagaManager?.let { registerSagaManagerAndStartPooling("saga", it) }
-    }
-}
-
-
 
 
 

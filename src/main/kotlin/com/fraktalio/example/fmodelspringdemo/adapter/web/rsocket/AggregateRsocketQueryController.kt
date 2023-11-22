@@ -2,12 +2,10 @@ package com.fraktalio.example.fmodelspringdemo.adapter.web.rsocket
 
 import com.fraktalio.example.fmodelspringdemo.adapter.persistence.RestaurantCoroutineRepository
 import com.fraktalio.example.fmodelspringdemo.adapter.persistence.RestaurantEntity
-import com.fraktalio.example.fmodelspringdemo.domain.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
 import org.springframework.messaging.handler.annotation.DestinationVariable
 import org.springframework.messaging.handler.annotation.MessageMapping
 import org.springframework.stereotype.Controller
-import java.util.*
 
 @Controller
 internal class AggregateRsocketQueryController(private val repository: RestaurantCoroutineRepository) {
