@@ -88,16 +88,21 @@ class EventStreamProcessor(
                 .buffer(buffer)
                 .collect {
                     // The event handler and lock/token management are executed in one transaction
-                    transactionalOperator.executeAndAwait { reactiveTransaction ->
-                        try {
-                            materializedView.handle(it.first)
-                            lockRepository.executeAction(view, Ack(it.second, it.first.deciderId()))
-                            logger.debug { "handled event successfully: $it" }
-                        } catch (e: Exception) {
-                            reactiveTransaction.setRollbackOnly()
-                            lockRepository.executeAction(view, ScheduleNack(nackInMilliseconds, it.first.deciderId()))
-                            logger.debug { "handled event unsuccessfully. setting ScheduleNack/RETRY in 10 seconds, for: $it" }
+                    try {
+                        transactionalOperator.executeAndAwait { reactiveTransaction ->
+                            try {
+                                materializedView.handle(it.first)
+                                lockRepository.executeAction(view, Ack(it.second, it.first.deciderId()))
+                                logger.debug { "handled event successfully: $it" }
+                            } catch (e: Exception) {
+                                logger.error { "handled event exceptionally: $e" }
+                                reactiveTransaction.setRollbackOnly()
+                                throw e
+                            }
                         }
+                    } catch (e: Exception) {
+                        lockRepository.executeAction(view, ScheduleNack(nackInMilliseconds, it.first.deciderId()))
+                        logger.debug { "handled event unsuccessfully. setting ScheduleNack/RETRY in 10 seconds, for: $it" }
                     }
                 }
         }
@@ -134,17 +139,22 @@ class EventStreamProcessor(
                 }
                 .buffer(buffer)
                 .collect {
-                    // The event handler and lock/token management are executed in one transaction
-                    transactionalOperator.executeAndAwait { reactiveTransaction ->
-                        try {
-                            sagaManager.handle(it.first).collect()
-                            lockRepository.executeAction(view, Ack(it.second, it.first.deciderId()))
-                            logger.debug { "saga: handled event successfully: $it" }
-                        } catch (e: Exception) {
-                            reactiveTransaction.setRollbackOnly()
-                            lockRepository.executeAction(view, ScheduleNack(nackInMilliseconds, it.first.deciderId()))
-                            logger.debug { "saga: handled event unsuccessfully. setting ScheduleNack/RETRY in 10 seconds, for: $it" }
+                    // The saga manager and lock/token management are executed in one transaction
+                    try {
+                        transactionalOperator.executeAndAwait { reactiveTransaction ->
+                            try {
+                                sagaManager.handle(it.first).collect()
+                                lockRepository.executeAction(view, Ack(it.second, it.first.deciderId()))
+                                logger.debug { "saga: handled event successfully: $it" }
+                            } catch (e: Exception) {
+                                logger.error { "saga: handled event exceptionally: $e" }
+                                reactiveTransaction.setRollbackOnly()
+                                throw e
+                            }
                         }
+                    } catch (e: Exception) {
+                        lockRepository.executeAction(view, ScheduleNack(nackInMilliseconds, it.first.deciderId()))
+                        logger.debug { "saga: handled event unsuccessfully. setting ScheduleNack/RETRY in 10 seconds, for: $it" }
                     }
                 }
         }
@@ -156,8 +166,8 @@ class EventStreamProcessor(
     @EventListener
     fun onApplicationEvent(event: ContextRefreshedEvent?) {
         logger.info { "spring context refreshed: $event" }
-        materializedView?.let { registerEventHandlerAndStartPooling("view", it, nackInMilliseconds = 10000) }
         sagaManager?.let { registerSagaManagerAndStartPooling("saga", it) }
+        materializedView?.let { registerEventHandlerAndStartPooling("view", it) }
     }
 }
 
