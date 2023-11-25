@@ -20,7 +20,8 @@ class AggregateRestCommandController(private val aggregate: Aggregate) {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun handle(command: Command): Flow<Event?> =
-        aggregate.handleOptimistically(command).map { it.first }
+        aggregate.handleOptimistically(command, mapOf("commandId" to UUID.randomUUID())).map { it.first }
+
 
     @PostMapping("restaurants")
     fun createRestaurant(@RequestBody command: CreateRestaurantCommand): Flow<Event?> =
