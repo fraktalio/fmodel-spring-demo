@@ -90,16 +90,19 @@ class AggregateEventRepositoryImpl(
      * Fetching the current state as a series/flow of Events
      */
     override fun Command?.fetchEvents(): Flow<Pair<Event, UUID?>> =
+        fetchEventsAndMetaData().map { Pair(it.first, it.second) }
+
+    /**
+     * Fetching the current state as a series/flow of Events and Metadata.
+     * This method is implemented by Default in the EventRepository interface, but we need/want to override it here.
+     */
+    override fun Command?.fetchEventsAndMetaData(): Flow<Triple<Event, UUID?, Map<String, Any>>> =
         when (this) {
-            is Command -> getEvents(deciderId()).map { it.toEventWithId() }
+            is Command -> getEvents(deciderId()).map { it.toEventWithIdAndMetaData() }
+                .map { Triple(it.first, it.second, mapOf("commandId" to it.third as Any)) }
+
             null -> emptyFlow()
         }
-            .onCompletion {
-                when (it) {
-                    null -> logger.debug { "fetching the aggregate events by command ${this@fetchEvents} completed with success" }
-                    else -> logger.warn { "fetching the aggregate events by command ${this@fetchEvents} completed with exception $it" }
-                }
-            }
             .flowOn(dbDispatcher)
 
     /**
@@ -117,27 +120,35 @@ class AggregateEventRepositoryImpl(
      *
      * `latestVersionProvider` is used to fetch the latest version of the event stream, per need
      */
-    override fun Flow<Event?>.save(latestVersionProvider: (Event?) -> UUID?): Flow<Pair<Event, UUID>> = flow {
+    override fun Flow<Event?>.save(latestVersionProvider: (Event?) -> UUID?): Flow<Pair<Event, UUID>> =
+        saveWithMetaData(latestVersionProvider, emptyMap()).map { Pair(it.first, it.second) }
+
+    /**
+     * Storing the new state as a series/flow of Events and Metadata
+     * This method is implemented by Default in the EventRepository interface, but we need/want to override it here.
+     *
+     * `latestVersionProvider` is used to fetch the latest version of the event stream, per need
+     */
+    override fun Flow<Event?>.saveWithMetaData(
+        latestVersionProvider: (Event?) -> UUID?,
+        metaData: Map<String, Any>
+    ): Flow<Triple<Event, UUID, Map<String, Any>>> = flow {
         val previousIds: MutableMap<String, UUID?> = emptyMap<String, UUID?>().toMutableMap()
         emitAll(
             filterNotNull()
                 .map {
                     previousIds.computeIfAbsent(it.deciderId()) { _ -> latestVersionProvider(it) }
                     val eventId = UUID.randomUUID()
-                    val eventEntity = it.toEventEntity(eventId, previousIds[it.deciderId()])
+                    val eventEntity =
+                        it.toEventEntity(eventId, previousIds[it.deciderId()], metaData["commandId"] as UUID)
                     previousIds[it.deciderId()] = eventId
                     eventEntity
                 }
                 .appendAll()
-                .map { it.toEventWithId() }
+                .map { it.toEventWithIdAndMetaData() }
+                .map { Triple(it.first, it.second, mapOf("commandId" to it.third as Any)) }
         )
     }
-        .onCompletion {
-            when (it) {
-                null -> logger.debug { "saving new events completed successfully" }
-                else -> logger.warn { "saving new events completed with exception $it" }
-            }
-        }
         .flowOn(dbDispatcher)
 
     /**
@@ -145,26 +156,35 @@ class AggregateEventRepositoryImpl(
      *
      * `latestVersion` is used to provide you with the latest known version of the state/stream
      */
-    override fun Flow<Event?>.save(latestVersion: UUID?): Flow<Pair<Event, UUID>> = flow {
+    override fun Flow<Event?>.save(latestVersion: UUID?): Flow<Pair<Event, UUID>> =
+        saveWithMetaData(latestVersion, emptyMap()).map { Pair(it.first, it.second) }
+
+    /**
+     * Storing the new state as a series/flow of Events with metadata
+     * This method is implemented by Default in the EventRepository interface, but we need/want to override it here.
+     *
+     *
+     * `latestVersion` is used to provide you with the latest known version of the state/stream
+     * `metaData` is used to provide you with the metadata
+     */
+    override fun Flow<Event?>.saveWithMetaData(
+        latestVersion: UUID?,
+        metaData: Map<String, Any>
+    ): Flow<Triple<Event, UUID, Map<String, Any>>> = flow {
         var previousId: UUID? = latestVersion
         emitAll(
             filterNotNull()
                 .map {
                     val eventId = UUID.randomUUID()
-                    val eventEntity = it.toEventEntity(eventId, previousId)
+                    val eventEntity = it.toEventEntity(eventId, previousId, metaData["commandId"] as UUID)
                     previousId = eventId
                     eventEntity
                 }
                 .appendAll()
-                .map { it.toEventWithId() }
+                .map { it.toEventWithIdAndMetaData() }
+                .map { Triple(it.first, it.second, mapOf("commandId" to it.third as Any)) }
         )
     }
-        .onCompletion {
-            when (it) {
-                null -> logger.debug { "saving new events completed successfully" }
-                else -> logger.warn { "saving new events completed with exception $it" }
-            }
-        }
         .flowOn(dbDispatcher)
 }
 
@@ -175,7 +195,7 @@ internal data class EventEntity(
     val event: String,
     val data: ByteArray,
     val eventId: UUID,
-    val commandId: UUID?,
+    val commandId: UUID,
     val previousId: UUID?,
     val final: Boolean,
     val createdAt: OffsetDateTime? = null,
@@ -198,7 +218,10 @@ internal val eventMapper: (Row, RowMetadata) -> EventEntity = { row, _ ->
 }
 
 internal fun EventEntity.toEventWithId() = Pair<Event, UUID>(Json.decodeFromString(data.decodeToString()), eventId)
-internal fun Event.toEventEntity(eventId: UUID, previousId: UUID?, commandId: UUID? = null) = EventEntity(
+internal fun EventEntity.toEventWithIdAndMetaData() =
+    Triple<Event, UUID, UUID?>(Json.decodeFromString(data.decodeToString()), eventId, commandId)
+
+internal fun Event.toEventEntity(eventId: UUID, previousId: UUID?, commandId: UUID) = EventEntity(
     decider(),
     deciderId(),
     event(),

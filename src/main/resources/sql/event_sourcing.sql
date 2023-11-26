@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS events
     -- event data in JSON format
     "data"        JSONB   NOT NULL,
     -- command ID causing this event
-    "command_id"  UUID    NULL,
+    "command_id"  UUID    NOT NULL,
     -- previous event uuid; null for first event; null does not trigger UNIQUE constraint; we defined a function `check_first_event_for_decider`
     "previous_id" UUID UNIQUE,
     -- indicator if the event stream for the `decider_id` is final
