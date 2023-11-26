@@ -1,7 +1,7 @@
 package com.fraktalio.example.fmodelspringdemo.application
 
 import com.fraktalio.example.fmodelspringdemo.domain.*
-import com.fraktalio.fmodel.application.publishOptimisticallyTo
+import com.fraktalio.fmodel.application.publishOptimisticallyWithMetaDataTo
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.TestConstructor
 import org.springframework.test.context.TestConstructor.AutowireMode.ALL
 import java.math.BigDecimal
+import java.util.*
 
 
 @SpringBootTest
@@ -47,7 +48,8 @@ class AggregateTest(private val aggregate: Aggregate) {
 
         val events =
             flowOf(createRestaurantCommand, changeRestaurantMenuCommand, placeOrderCommand, markOrderAsPreparedCommand)
-                .publishOptimisticallyTo(aggregate)
+                .map { Pair(it, mapOf("commandId" to UUID.randomUUID())) }
+                .publishOptimisticallyWithMetaDataTo(aggregate)
                 .map { it.first }
                 .toList()
 
