@@ -27,7 +27,7 @@ repositories {
     maven("https://s01.oss.sonatype.org/content/repositories/snapshots/")
 }
 
-extra["testcontainersVersion"] = "1.19.4"
+extra["testcontainersVersion"] = "1.19.7"
 extra["fmodelVersion"] = "3.5.1-SNAPSHOT"
 extra["kotlinxSerializationJson"] = "1.6.2"
 extra["kotlinxCollectionsImmutable"] = "0.3.7"
