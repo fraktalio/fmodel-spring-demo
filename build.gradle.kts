@@ -4,8 +4,8 @@ plugins {
     id("org.springframework.boot") version "3.4.0"
     id("io.spring.dependency-management") version "1.1.6"
     kotlin("jvm") version "2.1.0"
-    kotlin("plugin.spring") version "2.1.0"
-    kotlin("plugin.serialization") version "2.1.0"
+    kotlin("plugin.spring") version "2.3.10"
+    kotlin("plugin.serialization") version "2.3.10"
 }
 
 group = "com.fraktalio.example"
